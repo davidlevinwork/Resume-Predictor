@@ -1,0 +1,91 @@
+[2023-06-03 11:23:44] - [INFO] - [main] --> Execution started..
+[2023-06-03 11:24:54] - [INFO] - [plot_word_frequency] --> Word frequency plotted successfully.
+[2023-06-03 11:24:54] - [INFO] - [plot_category_distribution] --> Category distribution plotted successfully.
+[2023-06-03 11:34:27] - [INFO] - [plot_skills_distribution] --> Skills distribution plotted successfully.
+[2023-06-03 11:34:28] - [INFO] - [plot_most_used_category_words] --> Most used category words plotted successfully.
+[2023-06-03 11:34:28] - [INFO] - [plot_displacy_entities] --> Displacy entities plotted successfully.
+[2023-06-03 11:34:29] - [INFO] - [plot_displacy_dependency] --> Displacy dependency plotted successfully.
+[2023-06-03 12:36:49] - [INFO] - [_find_optimal_values] --> {'criterion': 'gini', 'max_depth': 13, 'max_features': 'auto', 'n_estimators': 800}
+[2023-06-03 12:37:58] - [INFO] - [_predict_rfc] --> RFC Training Score: 0.98
+[2023-06-03 12:38:10] - [INFO] - [_predict_rfc] --> RFC Test Score: 0.61
+[2023-06-03 12:38:11] - [INFO] - [_predict_rfc] --> model report: RandomForestClassifier(max_depth=13, max_features='auto', n_estimators=800,
+                       random_state=42): 
+               precision    recall  f1-score   support
+
+           0       0.53      0.86      0.66        28
+           1       0.52      0.55      0.54        20
+           2       1.00      0.20      0.33        15
+           3       0.67      0.22      0.33        18
+           4       0.00      0.00      0.00        18
+           5       0.00      0.00      0.00         7
+           6       0.52      0.75      0.61        20
+           7       0.58      0.75      0.65        20
+           8       0.00      0.00      0.00         1
+           9       0.50      0.50      0.50        24
+          10       0.75      0.91      0.82        23
+          11       0.74      0.89      0.81        28
+          12       1.00      0.19      0.32        21
+          13       0.80      0.44      0.57        27
+          14       0.88      0.70      0.78        20
+          15       0.73      0.79      0.76        28
+          16       0.92      0.37      0.52        30
+          17       0.71      0.43      0.54        23
+          18       0.52      0.59      0.55        22
+          19       0.77      0.91      0.83        22
+          20       0.51      0.83      0.63        23
+          21       0.59      0.85      0.69        20
+          22       0.25      0.53      0.34        19
+          23       0.58      0.95      0.72        20
+
+    accuracy                           0.61       497
+   macro avg       0.59      0.55      0.52       497
+weighted avg       0.64      0.61      0.57       497
+
+
+[2023-06-03 12:38:14] - [INFO] - [_predict_rfc] --> Trained model saved successfully.
+[2023-06-03 12:41:05] - [INFO] - [_predict_xgb] --> XGB Training Score: 1.00
+[2023-06-03 12:42:25] - [INFO] - [_predict_xgb] --> XGB Test Score: 0.67
+[2023-06-03 12:42:35] - [INFO] - [_predict_xgb] --> model report: XGBClassifier(base_score=None, booster=None, callbacks=None,
+              colsample_bylevel=None, colsample_bynode=None,
+              colsample_bytree=None, early_stopping_rounds=None,
+              enable_categorical=False, eval_metric=None, feature_types=None,
+              gamma=0, gpu_id=None, grow_policy=None, importance_type=None,
+              interaction_constraints=None, learning_rate=None, max_bin=None,
+              max_cat_threshold=None, max_cat_to_onehot=None,
+              max_delta_step=None, max_depth=13, max_leaves=None,
+              min_child_weight=None, missing=nan, monotone_constraints=None,
+              n_estimators=800, n_jobs=None, num_parallel_tree=None,
+              objective='multi:softprob', predictor=None, ...): 
+               precision    recall  f1-score   support
+
+           0       0.76      0.79      0.77        28
+           1       0.61      0.70      0.65        20
+           2       0.88      0.47      0.61        15
+           3       0.77      0.56      0.65        18
+           4       0.38      0.17      0.23        18
+           5       0.50      0.14      0.22         7
+           6       0.71      0.85      0.77        20
+           7       0.50      0.60      0.55        20
+           8       0.00      0.00      0.00         1
+           9       0.79      0.46      0.58        24
+          10       0.78      0.91      0.84        23
+          11       0.74      0.82      0.78        28
+          12       0.36      0.38      0.37        21
+          13       0.72      0.67      0.69        27
+          14       0.70      0.80      0.74        20
+          15       0.74      0.82      0.78        28
+          16       0.75      0.70      0.72        30
+          17       0.60      0.39      0.47        23
+          18       0.56      0.64      0.60        22
+          19       0.73      0.73      0.73        22
+          20       0.71      0.74      0.72        23
+          21       0.73      0.80      0.76        20
+          22       0.53      0.89      0.67        19
+          23       0.71      0.85      0.77        20
+
+    accuracy                           0.67       497
+   macro avg       0.63      0.62      0.61       497
+weighted avg       0.67      0.67      0.66       497
+
+
+[2023-06-03 12:42:37] - [INFO] - [_predict_xgb] --> Trained model saved successfully.
