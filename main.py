@@ -18,7 +18,7 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from nltk.stem import WordNetLemmatizer, PorterStemmer
-from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 
 nlp = spacy.load("en_core_web_lg")
 nltk.download(['stopwords', 'wordnet', 'punkt'], quiet=True)
@@ -42,7 +42,7 @@ class Visualizer:
             plt.figure(figsize=(12, 12))
             plt.pie(count, labels=labels, autopct='%1.2f%%')
             plt.axis('equal')
-            plt.savefig('Outputs/category_distribution.jpg')
+            plt.savefig('Outputs/Plots/category_distribution.jpg')
             plt.close()
 
             logging.info('Category distribution plotted successfully.')
@@ -64,7 +64,7 @@ class Visualizer:
                 plt.bar(wf['Word'], wf['Frequency'])
                 plt.ylim(0, 3500)
 
-            plt.savefig('Outputs/Word Frequency.jpg')
+            plt.savefig('Outputs/Plots/Word Frequency.jpg')
             plt.close()
 
             logging.info('Word frequency plotted successfully.')
@@ -80,7 +80,7 @@ class Visualizer:
             plt.ylabel('Count')
             plt.title(f'{job_category} Distribution of Skills')
 
-            plt.savefig(f'Outputs/{job_category} Distribution of Skills.jpg')
+            plt.savefig(f'Outputs/Plots/{job_category} Distribution of Skills.jpg')
             plt.close()
 
             logging.info('Skills distribution plotted successfully.')
@@ -113,7 +113,7 @@ class Visualizer:
             plt.axis("off")
             plt.imshow(wc, interpolation="bilinear")
             plt.title(f"Most Used Words in {job_category} Resume", fontsize=20)
-            plt.savefig(f'Outputs/Most Used Words in {job_category} Resume.jpg')
+            plt.savefig(f'Outputs/Plots/Most Used Words in {job_category} Resume.jpg')
 
             logging.info('Most used category words plotted successfully.')
         except Exception as e:
@@ -128,7 +128,7 @@ class Visualizer:
             html = displacy.render(sent, style="ent")
 
             # Write the file
-            with open("Outputs/displacy.html", "w", encoding="utf-8") as f:
+            with open("Outputs/Plots/displacy.html", "w", encoding="utf-8") as f:
                 f.write(html)
             logging.info('Displacy entities plotted successfully.')
         except Exception as e:
@@ -143,7 +143,7 @@ class Visualizer:
             html = displacy.render(sent[0:10], style="dep", options={"distance": 90})
 
             # Write the file
-            with open("Outputs/displacy_dep.html", "w", encoding="utf-8") as f:
+            with open("Outputs/Plots/displacy_dep.html", "w", encoding="utf-8") as f:
                 f.write(html)
             logging.info('Displacy dependency plotted successfully.')
         except Exception as e:
@@ -272,89 +272,77 @@ class ModelTrainer:
     def run(self):
         self._split_data()
         train_vectorizer, test_vectorizer = self._vectorize_data()
-        grid_search = self._find_optimal_values(train_vectorizer=train_vectorizer)
+        rfc_model, xgb_model = self._find_optimal_values(train_vectorizer=train_vectorizer)
 
-        self._train_model_rfc(grid_search=grid_search, train_vectorizer=train_vectorizer)
-        self._predict_rfc(train_vectorizer=train_vectorizer, test_vectorizer=test_vectorizer)
+        rfc_predictions = self._predict(model=rfc_model, test_vectorizer=test_vectorizer)
+        xgb_predictions = self._predict(model=xgb_model, test_vectorizer=test_vectorizer)
 
-        self._train_model_xgb(grid_search=grid_search, train_vectorizer=train_vectorizer)
-        self._predict_xgb(train_vectorizer=train_vectorizer, test_vectorizer=test_vectorizer)
+        self._evaluate_model(model=rfc_model, predictions=rfc_predictions, train_vectorizer=train_vectorizer,
+                             test_vectorizer=test_vectorizer, model_filename="rfc_model.sav")
+        self._evaluate_model(model=xgb_model, predictions=xgb_predictions, train_vectorizer=train_vectorizer,
+                             test_vectorizer=test_vectorizer, model_filename="xgb_model.sav")
 
     def _split_data(self):
         self.X_train, self.X_test, self.Y_train, self.Y_test = train_test_split(self.df['clean'], self.df['Category'],
                                                                                 test_size=0.2, shuffle=True)
-
         # Encode target variable
         self.Y_train = self.label_encoder.fit_transform(self.Y_train)
         self.Y_test = self.label_encoder.transform(self.Y_test)
 
     def _vectorize_data(self):
-        vectorizer = CountVectorizer()
+        vectorizer = TfidfVectorizer()
         train_vectorizer = vectorizer.fit_transform(self.X_train).astype(float)
         test_vectorizer = vectorizer.transform(self.X_test).astype(float)
         return train_vectorizer, test_vectorizer
 
     def _find_optimal_values(self, train_vectorizer):
-        param_grid = {
-            'n_estimators': [200, 500, 800],
+        rfc_param_grid = {
+            'n_estimators': [500, 800],
             'max_features': ['auto', 'sqrt', 'log2'],
-            'max_depth': [8, 9, 10, 11, 13],
+            'max_depth': [9, 10, 11],
             'criterion': ['gini', 'entropy']
         }
 
-        grid = GridSearchCV(cv=5,
-                            verbose=1,
-                            scoring='accuracy',
-                            estimator=self.rfc,
-                            param_grid=param_grid,
-                            return_train_score=False)
-        grid_search = grid.fit(train_vectorizer, self.Y_train)
-        logging.info(grid_search.best_params_)
+        xgb_param_grid = {
+            'n_estimators': [500, 800],
+            'max_depth': [9, 10, 11],
+            'learning_rate': [0.1, 0.3],
+            'subsample': [0.7, 1.0],
+            'colsample_bytree': [0.8, 1.0],
+        }
 
-        return grid_search
+        rfc_grid = GridSearchCV(cv=5,
+                                verbose=1,
+                                scoring='accuracy',
+                                estimator=self.rfc,
+                                param_grid=rfc_param_grid,
+                                return_train_score=False)
+        rfc_grid_search = rfc_grid.fit(train_vectorizer, self.Y_train)
+        logging.info(f'Random Forest Classifier: {rfc_grid_search.best_params_}')
 
-    def _train_model_rfc(self, grid_search, train_vectorizer):
-        self.rfc = RandomForestClassifier(random_state=42,
-                                          max_features=grid_search.best_params_['max_features'],
-                                          max_depth=grid_search.best_params_['max_depth'],
-                                          criterion=grid_search.best_params_['criterion'],
-                                          n_estimators=grid_search.best_params_['n_estimators'])
-        self.rfc.fit(train_vectorizer, self.Y_train)
+        xgb_grid = GridSearchCV(cv=5,
+                                verbose=1,
+                                scoring='accuracy',
+                                estimator=self.xgb,
+                                param_grid=xgb_param_grid,
+                                return_train_score=False)
+        xgb_grid_search = xgb_grid.fit(train_vectorizer, self.Y_train)
+        logging.info(f'XGBoost Classifier: {xgb_grid_search.best_params_}')
 
-    def _predict_rfc(self, train_vectorizer, test_vectorizer):
-        prediction = self.rfc.predict(test_vectorizer)
+        return rfc_grid_search.best_estimator_, xgb_grid_search.best_estimator_
 
-        logging.info("RFC Training Score: {:.2f}".format(self.rfc.score(train_vectorizer, self.Y_train)))
-        logging.info("RFC Test Score: {:.2f}".format(self.rfc.score(test_vectorizer, self.Y_test)))
+    @staticmethod
+    def _predict(model, test_vectorizer):
+        prediction = model.predict(test_vectorizer)
+        return prediction
 
-        logging.info("model report: %s: \n %s\n" % (self.rfc, metrics.classification_report(self.Y_test, prediction)))
-
-        # Save the trained model
-        filename = 'Outputs/rfc_model.sav'
-        joblib.dump(self.rfc, filename)
-        logging.info('Trained model saved successfully.')
-
-    def _train_model_xgb(self, grid_search, train_vectorizer):
-        self.xgb = xgb.XGBClassifier(gamma=0,
-                                     verbosity=0,
-                                     reg_lambda=1,
-                                     random_state=42,
-                                     max_depth=grid_search.best_params_['max_depth'],
-                                     n_estimators=grid_search.best_params_['n_estimators'])
-        self.xgb.fit(train_vectorizer, self.Y_train)
-
-    def _predict_xgb(self, train_vectorizer, test_vectorizer):
-        prediction = self.xgb.predict(test_vectorizer)
-        predicted_categories = self.label_encoder.inverse_transform(prediction)
-
-        logging.info("XGB Training Score: {:.2f}".format(self.xgb.score(train_vectorizer, self.Y_train)))
-        logging.info("XGB Test Score: {:.2f}".format(self.xgb.score(test_vectorizer, self.Y_test)))
-
-        logging.info("model report: %s: \n %s\n" % (self.xgb, metrics.classification_report(self.Y_test, prediction)))
+    def _evaluate_model(self, model, predictions, train_vectorizer, test_vectorizer, model_filename):
+        logging.info("Training Score: {:.2f}".format(model.score(train_vectorizer, self.Y_train)))
+        logging.info("Test Score: {:.2f}".format(model.score(test_vectorizer, self.Y_test)))
+        logging.info("model report: %s: \n %s\n" % (model, metrics.classification_report(self.Y_test, predictions)))
 
         # Save the trained model
-        filename = 'Outputs/xgb_model.sav'
-        joblib.dump(self.xgb, filename)
+        joblib.dump(model, f'Outputs/Models/{model_filename}')
         logging.info('Trained model saved successfully.')
 
 
