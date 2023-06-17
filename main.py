@@ -15,9 +15,9 @@ from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import GridSearchCV
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from nltk.stem import WordNetLemmatizer, PorterStemmer
+from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 
 nlp = spacy.load("en_core_web_lg")
@@ -172,6 +172,7 @@ class Preprocessor:
         return self.df
 
     def _preprocess_data(self):
+        self.df = self.df[~self.df['Category'].isin(['BPO', 'AUTOMOBILE', 'AGRICULTURE'])]
         self.df['Resume'] = self.df['Resume_str'].apply(self._preprocess_text)
 
     def _preprocess_text(self, txt: str):
@@ -201,10 +202,15 @@ class SpacyModel:
         visualizer.plot_displacy_entities()
         visualizer.plot_displacy_dependency()
 
+        return self.df
+
     def _preprocess_data(self):
         self.df["Clean_Resume"] = self._clean_resume_text()
         self.df["skills"] = self.df["Clean_Resume"].str.lower().apply(self._get_skills)
         self.df["skills"] = self.df["skills"].apply(self._unique_skills)
+
+        # Drop unused columns
+        self.df.drop(['ID', 'Resume_str', 'Resume_html'], axis=1)
 
     def _clean_data(self):
         self.df['clean'] = self.df['Resume'].apply(self._remove_stop_words).astype(str)
@@ -262,29 +268,30 @@ class SpacyModel:
         return list(set(x))
 
 
-class ModelTrainer:
-    def __init__(self, df):
+class GenericModelTrainer:
+    def __init__(self, df, model, model_name, param_grid):
         self.df = df
+        self.model = model
+        self.param_grid = param_grid
+        self.model_name = model_name
         self.label_encoder = LabelEncoder()
-        self.xgb = xgb.XGBClassifier()
-        self.rfc = RandomForestClassifier(random_state=42)
 
     def run(self):
         self._split_data()
         train_vectorizer, test_vectorizer = self._vectorize_data()
-        rfc_model, xgb_model = self._find_optimal_values(train_vectorizer=train_vectorizer)
 
-        rfc_predictions = self._predict(model=rfc_model, test_vectorizer=test_vectorizer)
-        xgb_predictions = self._predict(model=xgb_model, test_vectorizer=test_vectorizer)
+        self._find_optimal_values(train_vectorizer=train_vectorizer)
 
-        self._evaluate_model(model=rfc_model, predictions=rfc_predictions, train_vectorizer=train_vectorizer,
-                             test_vectorizer=test_vectorizer, model_filename="rfc_model.sav")
-        self._evaluate_model(model=xgb_model, predictions=xgb_predictions, train_vectorizer=train_vectorizer,
-                             test_vectorizer=test_vectorizer, model_filename="xgb_model.sav")
+        predictions = self._predict(test_vectorizer=test_vectorizer)
+
+        self._evaluate_model(predictions=predictions, train_vectorizer=train_vectorizer,
+                             test_vectorizer=test_vectorizer, model_filename=f"{self.model_name}_model.sav")
 
     def _split_data(self):
-        self.X_train, self.X_test, self.Y_train, self.Y_test = train_test_split(self.df['clean'], self.df['Category'],
-                                                                                test_size=0.2, shuffle=True)
+        self.X_train, self.X_test, self.Y_train, self.Y_test = train_test_split(self.df['clean'],
+                                                                                self.df['Category'],
+                                                                                test_size=0.2,
+                                                                                stratify=self.df['Category'])
         # Encode target variable
         self.Y_train = self.label_encoder.fit_transform(self.Y_train)
         self.Y_test = self.label_encoder.transform(self.Y_test)
@@ -296,70 +303,68 @@ class ModelTrainer:
         return train_vectorizer, test_vectorizer
 
     def _find_optimal_values(self, train_vectorizer):
-        rfc_param_grid = {
-            'n_estimators': [500, 800],
-            'max_features': ['auto', 'sqrt', 'log2'],
-            'max_depth': [9, 10, 11],
-            'criterion': ['gini', 'entropy']
-        }
+        grid = GridSearchCV(cv=3,
+                            verbose=0,
+                            scoring='accuracy',
+                            estimator=self.model,
+                            param_grid=self.param_grid,
+                            return_train_score=False)
+        grid_search = grid.fit(train_vectorizer, self.Y_train)
+        logging.info(f'{self.model_name} Classifier: {grid_search.best_params_}')
+        self.model = grid_search.best_estimator_
 
-        xgb_param_grid = {
-            'n_estimators': [500, 800],
-            'max_depth': [9, 10, 11],
-            'learning_rate': [0.1, 0.3],
-            'subsample': [0.7, 1.0],
-            'colsample_bytree': [0.8, 1.0],
-        }
+    def _predict(self, test_vectorizer):
+        predictions = self.model.predict_proba(test_vectorizer)
+        classes = self.label_encoder.inverse_transform(range(len(self.model.classes_)))
+        df_predictions = pd.DataFrame(predictions, columns=classes, index=self.X_test.index)
+        df_predictions.to_csv('Outputs/prediction_probabilities.csv')
 
-        rfc_grid = GridSearchCV(cv=5,
-                                verbose=1,
-                                scoring='accuracy',
-                                estimator=self.rfc,
-                                param_grid=rfc_param_grid,
-                                return_train_score=False)
-        rfc_grid_search = rfc_grid.fit(train_vectorizer, self.Y_train)
-        logging.info(f'Random Forest Classifier: {rfc_grid_search.best_params_}')
+        return self.model.predict(test_vectorizer)
 
-        xgb_grid = GridSearchCV(cv=5,
-                                verbose=1,
-                                scoring='accuracy',
-                                estimator=self.xgb,
-                                param_grid=xgb_param_grid,
-                                return_train_score=False)
-        xgb_grid_search = xgb_grid.fit(train_vectorizer, self.Y_train)
-        logging.info(f'XGBoost Classifier: {xgb_grid_search.best_params_}')
+    def _evaluate_model(self, predictions, train_vectorizer, test_vectorizer, model_filename):
+        logging.info("Training Score: {:.2f}".format(self.model.score(train_vectorizer, self.Y_train)))
+        logging.info("Test Score: {:.2f}".format(self.model.score(test_vectorizer, self.Y_test)))
 
-        return rfc_grid_search.best_estimator_, xgb_grid_search.best_estimator_
+        # Classification Report
+        logging.info(
+            "model report: %s: \n %s\n" % (self.model, classification_report(self.Y_test, predictions)))
 
-    @staticmethod
-    def _predict(model, test_vectorizer):
-        prediction = model.predict(test_vectorizer)
-        return prediction
-
-    def _evaluate_model(self, model, predictions, train_vectorizer, test_vectorizer, model_filename):
-        logging.info("Training Score: {:.2f}".format(model.score(train_vectorizer, self.Y_train)))
-        logging.info("Test Score: {:.2f}".format(model.score(test_vectorizer, self.Y_test)))
-        logging.info("model report: %s: \n %s\n" % (model, metrics.classification_report(self.Y_test, predictions)))
+        # Calculating and logging accuracy per class
+        cm = confusion_matrix(self.Y_test, predictions)
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        for i, class_accuracy in enumerate(cm.diagonal()):
+            class_name = self.label_encoder.inverse_transform([i])[0]
+            logging.info(f"Accuracy for class {class_name}: {class_accuracy}")
 
         # Save the trained model
-        joblib.dump(model, f'Outputs/Models/{model_filename}')
+        joblib.dump(self.model, f'Outputs/Models/{model_filename}')
         logging.info('Trained model saved successfully.')
 
 
 def main():
-    logging.info("Execution started..")
-
     # First Stage
     preprocessor = Preprocessor(dataset_path='Resume/Resume.csv')
     df = preprocessor.run()
 
     # Second Stage
     spacy_model = SpacyModel(df=df)
-    spacy_model.run()
+    df = spacy_model.run()
 
-    # Third Stage
-    model = ModelTrainer(df=df)
-    model.run()
+    # Third stage ==> XGBoost
+    xgb_param_grid = {
+        'n_estimators': [int(x) for x in np.linspace(start=100, stop=1500, num=100)],
+        'max_depth': [int(x) for x in np.linspace(start=3, stop=21, num=2)],
+        'learning_rate': [0.001, 0.01, 0.1, 0.2],
+        'subsample': [0.5, 0.7, 1.0],
+        'colsample_bytree': [0.5, 0.7, 1.0],
+        'gamma': [0, 0.1, 0.2]
+    }
+
+    xgb_trainer = GenericModelTrainer(df=df,
+                                      model_name="XGBoost",
+                                      model=xgb.XGBClassifier(),
+                                      param_grid=xgb_param_grid)
+    xgb_trainer.run()
 
 
 if __name__ == '__main__':
