@@ -13,7 +13,7 @@ The aim of this script is to provide an automated way to analyze and classify re
 ## Setup Environment
 ```bash
 git clone https://github.com/davidlevinwork/Resume-Predictor.git
-cd GB-AFS
+cd Resume-Predictor
 pip install -r requirements.txt
 python main.py
 ```
